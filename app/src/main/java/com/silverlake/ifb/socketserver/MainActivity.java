@@ -10,6 +10,7 @@ import android.media.projection.MediaProjectionManager;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.IBinder;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
@@ -20,7 +21,9 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Toast;
 
+import java.io.File;
 import java.math.BigInteger;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -37,6 +40,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private MediaProjection mediaProjection;
 
     private RecordingService recordService;
+    private ScreenRecorder screenRecorder;
 
     private Button btnStartServer, btnStopServer, btnStartRecording, btnStopRecording;
     private TextView tvIpAddress;
@@ -65,7 +69,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         Intent intent = new Intent(this, RecordingService.class);
         bindService(intent, connection, BIND_AUTO_CREATE);
 
-        performRuntimePermission();
+//        performRuntimePermission();
     }
 
     @Override
@@ -85,6 +89,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 break;
             case R.id.btnStopRecording:
                 stopRecording();
+//                if (screenRecorder != null) {
+//                    screenRecorder.quit();
+//                }
                 break;
         }
     }
@@ -95,6 +102,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         if (requestCode == RECORD_REQUEST_CODE && resultCode == RESULT_OK) {
             mediaProjection = projectionManager.getMediaProjection(resultCode, data);
             startRecording();
+            Toast.makeText(recordService, "Screen Recording is running..", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -174,6 +182,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         @Override
         public void onServiceConnected(ComponentName className, IBinder service) {
+            Log.d(TAG, "onServiceConnected: ");
+
             DisplayMetrics metrics = new DisplayMetrics();
             getWindowManager().getDefaultDisplay().getMetrics(metrics);
             RecordingService.RecordBinder binder = (RecordingService.RecordBinder) service;

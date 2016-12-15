@@ -22,6 +22,8 @@ public class RecordingService extends Service {
     private MediaRecorder mediaRecorder;
     private VirtualDisplay virtualDisplay;
 
+    private ScreenRecorder screenRecorder;
+
     private boolean running;
     private int width = 720;
     private int height = 1080;
@@ -75,9 +77,11 @@ public class RecordingService extends Service {
             return false;
         }
 
-        initRecorder();
-        createVirtualDisplay();
-        mediaRecorder.start();
+        final int bitrate = 6000000;
+
+        screenRecorder = new ScreenRecorder(width, height, bitrate, dpi, mediaProjection, getSaveDirectory() + System.currentTimeMillis() + ".mp4");
+        screenRecorder.start();
+
         running = true;
         return true;
     }
@@ -88,36 +92,11 @@ public class RecordingService extends Service {
         }
 
         running = false;
-        mediaRecorder.stop();
-        mediaRecorder.reset();
-        virtualDisplay.release();
-        mediaProjection.stop();
 
-        return true;
-    }
-
-    private void createVirtualDisplay() {
-        virtualDisplay = mediaProjection.createVirtualDisplay("MainScreen", width, height, dpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, mediaRecorder.getSurface(), null, null);
-    }
-
-    private void initRecorder() {
-        mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
-        mediaRecorder.setVideoSource(MediaRecorder.VideoSource.SURFACE);
-        mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
-        mediaRecorder.setOutputFile(getSaveDirectory() + System.currentTimeMillis() + ".mp4");
-        mediaRecorder.setVideoSize(width, height);
-        mediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
-        mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
-//        mediaRecorder.setVideoEncodingBitRate(5 * 1024 * 1024);
-        mediaRecorder.setVideoEncodingBitRate(1024000);
-//        mediaRecorder.setVideoFrameRate(30);
-        mediaRecorder.setVideoFrameRate(25);
-
-        try {
-            mediaRecorder.prepare();
-        } catch (IOException e) {
-            e.printStackTrace();
+        if (screenRecorder != null) {
+            screenRecorder.quit();
         }
+        return true;
     }
 
     public String getSaveDirectory() {
