@@ -21,10 +21,11 @@ import android.hardware.display.VirtualDisplay;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
-import android.media.MediaMuxer;
 import android.media.projection.MediaProjection;
 import android.util.Log;
 import android.view.Surface;
+
+import com.koushikdutta.async.http.WebSocket;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -50,12 +51,14 @@ public class ScreenRecorder extends Thread {
 
     private MediaCodec mEncoder;
     private Surface mSurface;
-    private MediaMuxer mMuxer;
-    private boolean mMuxerStarted = false;
+//    private MediaMuxer mMuxer;
+//    private boolean mMuxerStarted = false;
     private int mVideoTrackIndex = -1;
     private AtomicBoolean mQuit = new AtomicBoolean(false);
     private MediaCodec.BufferInfo mBufferInfo = new MediaCodec.BufferInfo();
     private VirtualDisplay mVirtualDisplay;
+
+    private WebSocket webSocket;
 
     public ScreenRecorder(int width, int height, int bitrate, int dpi, MediaProjection mp, String dstPath) {
         super(TAG);
@@ -73,6 +76,10 @@ public class ScreenRecorder extends Thread {
         this(640, 480, 2000000, 1, mp, "/sdcard/test.mp4");
     }
 
+    public void setWebsocket(WebSocket websocket) {
+        this.webSocket = websocket;
+    }
+
     /**
      * stop task
      */
@@ -85,17 +92,15 @@ public class ScreenRecorder extends Thread {
         try {
             try {
                 prepareEncoder();
-                mMuxer = new MediaMuxer(mDstPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+//                mMuxer = new MediaMuxer(mDstPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
 
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
-            mVirtualDisplay = mMediaProjection.createVirtualDisplay(TAG + "-display",
-                    mWidth, mHeight, mDpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC,
-                    mSurface, null, null);
+            mVirtualDisplay = mMediaProjection.createVirtualDisplay(TAG + "-display", mWidth, mHeight, mDpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC, mSurface, null, null);
             Log.d(TAG, "created virtual display: " + mVirtualDisplay);
-            recordVirtualDisplay();
 
+            recordVirtualDisplay();
         } finally {
             release();
         }
@@ -106,20 +111,17 @@ public class ScreenRecorder extends Thread {
             int index = mEncoder.dequeueOutputBuffer(mBufferInfo, TIMEOUT_US);
             Log.i(TAG, "dequeue output buffer index=" + index);
             if (index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                resetOutputFormat();
-
+//                resetOutputFormat();
             } else if (index == MediaCodec.INFO_TRY_AGAIN_LATER) {
                 Log.d(TAG, "retrieving buffers time out!");
                 try {
-                    // wait 10ms
                     Thread.sleep(10);
                 } catch (InterruptedException e) {
                 }
             } else if (index >= 0) {
-
-                if (!mMuxerStarted) {
-                    throw new IllegalStateException("MediaMuxer dose not call addTrack(format) ");
-                }
+//                if (!mMuxerStarted) {
+//                    throw new IllegalStateException("MediaMuxer dose not call addTrack(format) ");
+//                }
                 encodeToVideoTrack(index);
 
                 mEncoder.releaseOutputBuffer(index, false);
@@ -141,47 +143,57 @@ public class ScreenRecorder extends Thread {
             Log.d(TAG, "info.size == 0, drop it.");
             encodedData = null;
         } else {
-            Log.d(TAG, "got buffer, info: size=" + mBufferInfo.size
-                    + ", presentationTimeUs=" + mBufferInfo.presentationTimeUs
-                    + ", offset=" + mBufferInfo.offset);
+            Log.d(TAG, "got buffer, info: size=" + mBufferInfo.size + ", presentationTimeUs=" + mBufferInfo.presentationTimeUs + ", offset=" + mBufferInfo.offset);
         }
         if (encodedData != null) {
             encodedData.position(mBufferInfo.offset);
             encodedData.limit(mBufferInfo.offset + mBufferInfo.size);
-            mMuxer.writeSampleData(mVideoTrackIndex, encodedData, mBufferInfo);
+
+            byte[] b = new byte[encodedData.remaining()];
+            encodedData.get(b);
+
+            if (webSocket != null) {
+                Log.e(TAG, "encodeToVideoTrack: sending byte to server...");
+                webSocket.send(b);
+            }
+
+            //mMuxer.writeSampleData(mVideoTrackIndex, encodedData, mBufferInfo);
             Log.i(TAG, "sent " + mBufferInfo.size + " bytes to muxer...");
         }
     }
 
     private void resetOutputFormat() {
         // should happen before receiving buffers, and should only happen once
-        if (mMuxerStarted) {
-            throw new IllegalStateException("output format already changed!");
-        }
+//        if (mMuxerStarted) {
+//            throw new IllegalStateException("output format already changed!");
+//        }
         MediaFormat newFormat = mEncoder.getOutputFormat();
 
         Log.i(TAG, "output format changed.\n new format: " + newFormat.toString());
-        mVideoTrackIndex = mMuxer.addTrack(newFormat);
-        mMuxer.start();
-        mMuxerStarted = true;
+
+//        mVideoTrackIndex = mMuxer.addTrack(newFormat);
+//        mMuxer.start();
+//        mMuxerStarted = true;
+
         Log.i(TAG, "started media muxer, videoIndex=" + mVideoTrackIndex);
     }
 
     private void prepareEncoder() throws IOException {
-
         MediaFormat format = MediaFormat.createVideoFormat(MIME_TYPE, mWidth, mHeight);
-        format.setInteger(MediaFormat.KEY_COLOR_FORMAT,
-                MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
+        format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
         format.setInteger(MediaFormat.KEY_BIT_RATE, mBitRate);
         format.setInteger(MediaFormat.KEY_FRAME_RATE, FRAME_RATE);
         format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, IFRAME_INTERVAL);
 
         Log.d(TAG, "created video format: " + format);
+
         mEncoder = MediaCodec.createEncoderByType(MIME_TYPE);
         mEncoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
         mSurface = mEncoder.createInputSurface();
+
         Log.d(TAG, "created input surface: " + mSurface);
         mEncoder.start();
+
     }
 
     private void release() {
@@ -196,10 +208,10 @@ public class ScreenRecorder extends Thread {
         if (mMediaProjection != null) {
             mMediaProjection.stop();
         }
-        if (mMuxer != null) {
-            mMuxer.stop();
-            mMuxer.release();
-            mMuxer = null;
-        }
+//        if (mMuxer != null) {
+//            mMuxer.stop();
+//            mMuxer.release();
+//            mMuxer = null;
+//        }
     }
 }

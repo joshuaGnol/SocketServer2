@@ -10,7 +10,6 @@ import android.media.projection.MediaProjectionManager;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.IBinder;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
@@ -21,9 +20,7 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
-import android.widget.Toast;
 
-import java.io.File;
 import java.math.BigInteger;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -39,8 +36,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private MediaProjectionManager projectionManager;
     private MediaProjection mediaProjection;
 
-    private RecordingService recordService;
+    //    private RecordingService recordService;
     private ScreenRecorder screenRecorder;
+    private SocketService recordService;
 
     private Button btnStartServer, btnStopServer, btnStartRecording, btnStopRecording;
     private TextView tvIpAddress;
@@ -66,8 +64,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         btnStartRecording.setOnClickListener(this);
         btnStopRecording.setOnClickListener(this);
 
-        Intent intent = new Intent(this, RecordingService.class);
-        bindService(intent, connection, BIND_AUTO_CREATE);
+//        Intent intent = new Intent(this, RecordingService.class);
+//        bindService(intent, connection, BIND_AUTO_CREATE);
 
 //        performRuntimePermission();
     }
@@ -76,23 +74,34 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     public void onClick(View v) {
         switch (v.getId()) {
             case R.id.btnStartServer:
-                startServer();
-                break;
-            case R.id.btnStopServer:
-                stopServer();
-                break;
-            case R.id.btnStartRecording:
-                if (recordService != null && !recordService.isRunning()) {
+                if (recordService != null) {
+                    recordService.start();
+                } else {
                     Intent captureIntent = projectionManager.createScreenCaptureIntent();
                     startActivityForResult(captureIntent, RECORD_REQUEST_CODE);
                 }
+//                startServer();
+
                 break;
-            case R.id.btnStopRecording:
-                stopRecording();
+            case R.id.btnStopServer:
+//                unbindService(connection);
+                if (recordService != null) {
+                    recordService.stop();
+                }
+//                stopServer();
+                break;
+//            case R.id.btnStartRecording:
+//                if (recordService != null && !recordService.isRunning()) {
+//                    Intent captureIntent = projectionManager.createScreenCaptureIntent();
+//                    startActivityForResult(captureIntent, RECORD_REQUEST_CODE);
+//                }
+//                break;
+//            case R.id.btnStopRecording:
+//                stopRecording();
 //                if (screenRecorder != null) {
 //                    screenRecorder.quit();
 //                }
-                break;
+//                break;
         }
     }
 
@@ -100,9 +109,14 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == RECORD_REQUEST_CODE && resultCode == RESULT_OK) {
+            Log.d(TAG, "onActivityResult: ");
             mediaProjection = projectionManager.getMediaProjection(resultCode, data);
-            startRecording();
-            Toast.makeText(recordService, "Screen Recording is running..", Toast.LENGTH_SHORT).show();
+
+            Intent intent = new Intent(this, SocketService.class);
+            bindService(intent, connection, BIND_AUTO_CREATE);
+
+//            startRecording();
+//            Toast.makeText(recordService, "Screen Recording is running..", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -113,31 +127,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             if (grantResults[0] != PackageManager.PERMISSION_GRANTED) {
                 finish();
             }
-        }
-    }
-
-    private void startServer() {
-        Intent intent = new Intent(this, SocketService.class);
-        startService(intent);
-    }
-
-    private void stopServer() {
-        Intent intent = new Intent(this, SocketService.class);
-        stopService(intent);
-    }
-
-    private void startRecording() {
-        if (!recordService.isRunning()) {
-            recordService.setMediaProject(mediaProjection);
-            recordService.startRecord();
-        }
-    }
-
-    private void stopRecording() {
-        if (recordService.isRunning()) {
-            recordService.stopRecord();
-            recordService.setRunning(false);
-            unbindService(connection);
         }
     }
 
@@ -183,12 +172,25 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         @Override
         public void onServiceConnected(ComponentName className, IBinder service) {
             Log.d(TAG, "onServiceConnected: ");
+            if (service instanceof SocketService.ScreenMirroringBinder) {
+                DisplayMetrics metrics = new DisplayMetrics();
+                getWindowManager().getDefaultDisplay().getMetrics(metrics);
 
-            DisplayMetrics metrics = new DisplayMetrics();
-            getWindowManager().getDefaultDisplay().getMetrics(metrics);
-            RecordingService.RecordBinder binder = (RecordingService.RecordBinder) service;
-            recordService = binder.getRecordService();
-            recordService.setConfig(metrics.widthPixels, metrics.heightPixels, metrics.densityDpi);
+                int width = metrics.widthPixels;
+                int height = metrics.heightPixels;
+                int dpi = metrics.densityDpi;
+
+                recordService = ((SocketService.ScreenMirroringBinder) service).getRecordService();
+                recordService.setVideoConfig(width, height, dpi, mediaProjection);
+                recordService.start();
+
+            } else {
+//                DisplayMetrics metrics = new DisplayMetrics();
+//                getWindowManager().getDefaultDisplay().getMetrics(metrics);
+//                RecordingService.RecordBinder binder = (RecordingService.RecordBinder) service;
+//                recordService = binder.getRecordService();
+//                recordService.setConfig(metrics.widthPixels, metrics.heightPixels, metrics.densityDpi);
+            }
         }
 
         @Override

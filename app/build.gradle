@@ -13,7 +13,7 @@ android {
     }
 
     aaptOptions {
-        noCompress 'html', 'js'
+        noCompress 'html', 'js', 'css'
     }
 
     buildTypes {
